@@ -64,3 +64,6 @@ Thumbs.db
 *.local
 .vercel
 .netlify
+
+# Sensitive configuration files
+src/config/cloudinary.ts
