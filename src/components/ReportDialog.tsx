@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../config/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { AlertCircle, X } from 'lucide-react';
 

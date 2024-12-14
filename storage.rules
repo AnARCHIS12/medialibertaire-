@@ -2,15 +2,47 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Permettre la lecture publique de toutes les images
+    // Fonction pour vérifier si l'utilisateur est connecté
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Fonction pour vérifier si l'utilisateur accède à son propre document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Fonction pour vérifier la taille du fichier
+    function isValidFileSize() {
+      return request.resource.size < 5 * 1024 * 1024; // 5MB max
+    }
+
+    // Fonction pour vérifier le type de fichier
+    function isImageType() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    // Permettre la lecture de tous les fichiers
     match /{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null;
     }
-    
-    // Permettre l'écriture aux utilisateurs authentifiés dans leur dossier
+
+    // Règles pour les avatars
+    match /avatars/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if isAuthenticated() 
+                   && isOwner(userId)
+                   && isValidFileSize()
+                   && isImageType();
+    }
+
+    // Règles pour les images d'articles
     match /articles/{userId}/{imageId} {
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if true;
+      allow write: if isAuthenticated() 
+                   && isOwner(userId)
+                   && isValidFileSize()
+                   && isImageType();
     }
   }
 }

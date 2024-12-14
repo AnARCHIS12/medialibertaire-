@@ -1,335 +1,231 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { 
-  updateProfile, 
-  updateEmail, 
-  updatePassword,
-  reauthenticateWithCredential,
-  EmailAuthProvider
-} from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { AlertCircle, User, Lock } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { Camera, Loader2, User } from 'lucide-react';
+import { CloudinaryUploadWidget } from '../components/CloudinaryUploadWidget';
 
-export const SettingsPage = () => {
-  const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'profile' | 'security'>('profile');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  // Profile states
-  const [displayName, setDisplayName] = useState(user?.displayName || '');
-  const [email, setEmail] = useState(user?.email || '');
-  const [bio, setBio] = useState('');
-  
-  // Security states
-  const [currentPassword, setCurrentPassword] = useState('');
+export default function SettingsPage() {
+  const { user, updateEmail, updatePassword, updateDisplayName } = useAuth();
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [isUpdatingDisplayName, setIsUpdatingDisplayName] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-
-  useEffect(() => {
-    // Attendre que l'état d'authentification soit chargé
-    if (authLoading) return;
-
-    // Rediriger si non connecté
-    if (!user) {
-      navigate('/', { replace: true });
-      return;
-    }
-
-    const loadProfile = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        // Charge les données du profil
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
-        
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setBio(userData.bio || '');
-          setDisplayName(user.displayName || '');
-          setEmail(user.email || '');
-        } else {
-          // Créer le document utilisateur s'il n'existe pas
-          await setDoc(userDocRef, {
-            displayName: user.displayName || '',
-            email: user.email || '',
-            bio: '',
-            createdAt: new Date(),
-            updatedAt: new Date()
-          });
-        }
-      } catch (err) {
-        console.error('Error loading profile:', err);
-        setError('Erreur lors du chargement du profil');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadProfile();
-  }, [user, navigate, authLoading]);
-
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      setSuccess(null);
-
-      // Mise à jour du profil Firebase Auth
-      await updateProfile(user, {
-        displayName: displayName.trim()
-      });
-
-      // Mise à jour de l'email si changé
-      if (email.trim() !== user.email) {
-        await updateEmail(user, email.trim());
-      }
-
-      // Mise à jour du profil Firestore
-      const userDocRef = doc(db, 'users', user.uid);
-      await setDoc(userDocRef, {
-        displayName: displayName.trim(),
-        email: email.trim(),
-        bio: bio.trim(),
-        updatedAt: new Date()
-      }, { merge: true });
-
-      setSuccess('Profil mis à jour avec succès');
-    } catch (err) {
-      console.error('Error updating profile:', err);
-      if (err instanceof Error) {
-        switch (err.name) {
-          case 'auth/requires-recent-login':
-            setError('Pour des raisons de sécurité, veuillez vous reconnecter avant de modifier votre email');
-            break;
-          case 'auth/email-already-in-use':
-            setError('Cette adresse email est déjà utilisée par un autre compte');
-            break;
-          case 'auth/invalid-email':
-            setError('L\'adresse email n\'est pas valide');
-            break;
-          default:
-            setError('Une erreur est survenue lors de la mise à jour du profil');
-        }
-      } else {
-        setError('Une erreur est survenue lors de la mise à jour du profil');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpdatePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !user.email) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      setSuccess(null);
-
-      if (newPassword !== confirmPassword) {
-        setError('Les mots de passe ne correspondent pas');
-        return;
-      }
-
-      if (newPassword.length < 6) {
-        setError('Le mot de passe doit contenir au moins 6 caractères');
-        return;
-      }
-
-      // Réauthentification
-      const credential = EmailAuthProvider.credential(user.email, currentPassword);
-      await reauthenticateWithCredential(user, credential);
-
-      // Mise à jour du mot de passe
-      await updatePassword(user, newPassword);
-
-      setSuccess('Mot de passe mis à jour avec succès');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-    } catch (err) {
-      console.error('Error updating password:', err);
-      if (err instanceof Error) {
-        switch (err.name) {
-          case 'auth/wrong-password':
-            setError('Le mot de passe actuel est incorrect');
-            break;
-          case 'auth/weak-password':
-            setError('Le nouveau mot de passe est trop faible');
-            break;
-          case 'auth/requires-recent-login':
-            setError('Pour des raisons de sécurité, veuillez vous reconnecter avant de modifier votre mot de passe');
-            break;
-          default:
-            setError('Une erreur est survenue lors de la mise à jour du mot de passe');
-        }
-      } else {
-        setError('Une erreur est survenue lors de la mise à jour du mot de passe');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newDisplayName, setNewDisplayName] = useState('');
 
   if (!user) {
-    return null;
+    return <div>Chargement...</div>;
   }
 
+  const handleEmailUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEmail) return;
+
+    setIsUpdatingEmail(true);
+    try {
+      await updateEmail(newEmail);
+      setNewEmail('');
+      toast.success('Email mis à jour avec succès');
+    } catch (error) {
+      toast.error('Erreur lors de la mise à jour de l\'email');
+    } finally {
+      setIsUpdatingEmail(false);
+    }
+  };
+
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || !currentPassword) return;
+
+    setIsUpdatingPassword(true);
+    try {
+      await updatePassword(newPassword);
+      setNewPassword('');
+      setCurrentPassword('');
+      toast.success('Mot de passe mis à jour avec succès');
+    } catch (error) {
+      toast.error('Erreur lors de la mise à jour du mot de passe');
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
+
+  const handleDisplayNameUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDisplayName) return;
+
+    setIsUpdatingDisplayName(true);
+    try {
+      await updateDisplayName(newDisplayName);
+      setNewDisplayName('');
+    } catch (error) {
+      toast.error('Erreur lors de la mise à jour du nom');
+    } finally {
+      setIsUpdatingDisplayName(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container mx-auto px-4">
-        <div className="max-w-2xl mx-auto">
-          <h1 className="text-3xl font-bold mb-8">Paramètres</h1>
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-3xl mx-auto">
+        <h1 className="text-3xl font-bold mb-8">Paramètres du compte</h1>
 
-          {/* Messages */}
-          {error && (
-            <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md flex items-center gap-2">
-              <AlertCircle size={18} />
-              <span>{error}</span>
-            </div>
-          )}
-          {success && (
-            <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-md">
-              {success}
-            </div>
-          )}
-
-          {/* Tabs */}
-          <div className="flex border-b mb-6">
-            <button
-              onClick={() => setActiveTab('profile')}
-              className={`flex items-center gap-2 px-4 py-2 font-medium ${
-                activeTab === 'profile'
-                  ? 'text-red-600 border-b-2 border-red-600'
-                  : 'text-gray-500 hover:text-red-600'
-              }`}
-            >
-              <User size={18} />
-              <span>Profil</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('security')}
-              className={`flex items-center gap-2 px-4 py-2 font-medium ${
-                activeTab === 'security'
-                  ? 'text-red-600 border-b-2 border-red-600'
-                  : 'text-gray-500 hover:text-red-600'
-              }`}
-            >
-              <Lock size={18} />
-              <span>Sécurité</span>
-            </button>
-          </div>
-
-          {/* Profile Settings */}
-          {activeTab === 'profile' && (
-            <form onSubmit={handleUpdateProfile} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nom d'affichage
-                </label>
-                <input
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                />
+        <div className="bg-white shadow rounded-lg p-6 space-y-8">
+          {/* Section Profile */}
+          <div>
+            <h2 className="text-xl font-semibold mb-4">Profile</h2>
+            
+            {/* Section Avatar */}
+            <div className="flex flex-col items-center space-y-4 pb-8 border-b border-gray-200">
+              <div className="relative group">
+                <div className="relative rounded-full overflow-hidden">
+                  <img
+                    src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'User')}&background=random`}
+                    alt="Photo de profil"
+                    className="w-32 h-32 object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black bg-opacity-40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+                    <Camera className="w-8 h-8 text-white" />
+                  </div>
+                </div>
               </div>
+              
+              <CloudinaryUploadWidget 
+                onError={(error) => toast.error(error.message)} 
+              />
+            </div>
 
+            {/* Section Nom d'affichage */}
+            <form onSubmit={handleDisplayNameUpdate} className="space-y-4 mt-8">
+              <h3 className="text-lg font-medium">Changer le nom d'affichage</h3>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
+                <label htmlFor="displayName" className="block text-sm font-medium text-gray-700">
+                  Nom actuel
+                </label>
+                <div className="mt-1 flex rounded-md shadow-sm">
+                  <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500">
+                    <User className="h-5 w-5" />
+                  </span>
+                  <input
+                    type="text"
+                    disabled
+                    value={user.displayName || ''}
+                    className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none bg-gray-50 border border-gray-300 text-gray-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="newDisplayName" className="block text-sm font-medium text-gray-700">
+                  Nouveau nom
+                </label>
+                <div className="mt-1 flex rounded-md shadow-sm">
+                  <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500">
+                    <User className="h-5 w-5" />
+                  </span>
+                  <input
+                    type="text"
+                    id="newDisplayName"
+                    value={newDisplayName}
+                    onChange={(e) => setNewDisplayName(e.target.value)}
+                    placeholder="Nouveau nom d'affichage"
+                    className="flex-1 min-w-0 block w-full px-3 py-2 rounded-none rounded-r-md border focus:ring-red-500 focus:border-red-500 border-gray-300"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={isUpdatingDisplayName || !newDisplayName}
+                className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
+              >
+                {isUpdatingDisplayName ? (
+                  <>
+                    <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                    Mise à jour...
+                  </>
+                ) : (
+                  'Mettre à jour le nom'
+                )}
+              </button>
+            </form>
+
+            {/* Section Email */}
+            <form onSubmit={handleEmailUpdate} className="space-y-4 mt-8">
+              <h3 className="text-lg font-medium">Changer l'email</h3>
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                  Nouvel email
                 </label>
                 <input
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  id="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
+                  placeholder="nouveau@email.com"
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Bio
-                </label>
-                <textarea
-                  value={bio}
-                  onChange={(e) => setBio(e.target.value)}
-                  rows={4}
-                  className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                />
-              </div>
-
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                disabled={isUpdatingEmail || !newEmail}
+                className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
               >
-                {loading ? 'Mise à jour...' : 'Mettre à jour le profil'}
+                {isUpdatingEmail ? (
+                  <>
+                    <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                    Mise à jour...
+                  </>
+                ) : (
+                  'Mettre à jour l\'email'
+                )}
               </button>
             </form>
-          )}
 
-          {/* Security Settings */}
-          {activeTab === 'security' && (
-            <form onSubmit={handleUpdatePassword} className="space-y-6">
+            {/* Section Mot de passe */}
+            <form onSubmit={handlePasswordUpdate} className="space-y-4 mt-8">
+              <h3 className="text-lg font-medium">Changer le mot de passe</h3>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="currentPassword" className="block text-sm font-medium text-gray-700">
                   Mot de passe actuel
                 </label>
                 <input
                   type="password"
+                  id="currentPassword"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
                 />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="newPassword" className="block text-sm font-medium text-gray-700">
                   Nouveau mot de passe
                 </label>
                 <input
                   type="password"
+                  id="newPassword"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500"
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Confirmer le nouveau mot de passe
-                </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                />
-              </div>
-
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                disabled={isUpdatingPassword || !newPassword || !currentPassword}
+                className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
               >
-                {loading ? 'Mise à jour...' : 'Mettre à jour le mot de passe'}
+                {isUpdatingPassword ? (
+                  <>
+                    <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                    Mise à jour...
+                  </>
+                ) : (
+                  'Mettre à jour le mot de passe'
+                )}
               </button>
             </form>
-          )}
+          </div>
         </div>
       </div>
     </div>
   );
-};
+}

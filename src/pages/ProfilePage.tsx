@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, increment } from 'firebase/firestore';
-import { db } from '../firebase';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, increment, Timestamp } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Settings, Edit2, Bookmark, MessageSquare } from 'lucide-react';
+import { Settings, Edit2 } from 'lucide-react';
 import { ArticleCard } from '../components/ArticleCard';
 import { convertFirestoreArticle } from '../utils/firestore';
 import type { Article } from '../types';
@@ -26,6 +26,7 @@ export const ProfilePage = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [activeTab, setActiveTab] = useState<'articles' | 'comments' | 'bookmarks'>('articles');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const handleVote = async (id: string, value: number) => {
     if (!user) {
@@ -39,7 +40,6 @@ export const ProfilePage = () => {
         votes: increment(value)
       });
 
-      // Mise à jour locale de l'état
       setArticles(prevArticles =>
         prevArticles.map(article =>
           article.id === id
@@ -55,27 +55,59 @@ export const ProfilePage = () => {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      if (!id) return;
+      if (!id) {
+        console.error('ID de profil manquant');
+        setError("ID de profil non spécifié");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      console.log('Tentative de chargement du profil:', id);
 
       try {
         const userRef = doc(db, 'users', id);
+        console.log('Récupération du document utilisateur...');
         const userSnap = await getDoc(userRef);
 
-        if (userSnap.exists()) {
-          setProfile({
-            id: userSnap.id,
-            ...userSnap.data()
-          } as UserProfile);
-
-          // Fetch user's articles
-          const articlesRef = collection(db, 'articles');
-          const q = query(articlesRef, where('authorId', '==', id));
-          const snapshot = await getDocs(q);
-          const articlesData = snapshot.docs.map(doc => convertFirestoreArticle(doc));
-          setArticles(articlesData);
+        if (!userSnap.exists()) {
+          console.error('Document utilisateur non trouvé dans Firestore');
+          setError("Le profil demandé n'existe pas dans la base de données");
+          setLoading(false);
+          return;
         }
+
+        console.log('Document utilisateur trouvé:', userSnap.data());
+        const userData = userSnap.data();
+        
+        if (!userData.displayName) {
+          console.warn('Le profil existe mais displayName est manquant');
+        }
+
+        setProfile({
+          id: userSnap.id,
+          displayName: userData.displayName || 'Utilisateur sans nom',
+          bio: userData.bio || '',
+          joinedAt: userData.joinedAt instanceof Timestamp ? userData.joinedAt.toDate() : new Date(),
+          articlesCount: userData.articlesCount || 0,
+          commentsCount: userData.commentsCount || 0
+        });
+
+        console.log('Récupération des articles de l\'utilisateur...');
+        const articlesRef = collection(db, 'articles');
+        const q = query(articlesRef, where('authorId', '==', id));
+        const snapshot = await getDocs(q);
+        const articlesData = snapshot.docs.map(doc => convertFirestoreArticle(doc));
+        console.log(`${articlesData.length} articles trouvés`);
+        setArticles(articlesData);
       } catch (error) {
-        console.error('Error fetching profile:', error);
+        console.error('Erreur détaillée lors du chargement du profil:', error);
+        if (error instanceof Error) {
+          setError(`Erreur: ${error.message}`);
+        } else {
+          setError("Une erreur inattendue est survenue lors du chargement du profil");
+        }
       } finally {
         setLoading(false);
       }
@@ -86,8 +118,22 @@ export const ProfilePage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Chargement du profil...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-white rounded-lg shadow-md p-6 text-center">
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Profil non trouvé</h2>
+          <p className="text-gray-600">{error}</p>
+        </div>
       </div>
     );
   }
@@ -100,7 +146,7 @@ export const ProfilePage = () => {
             Profil non trouvé
           </h1>
           <p className="text-gray-600">
-            Le profil que vous recherchez n'existe pas.
+            Le profil que vous recherchez n'existe pas ou a été supprimé.
           </p>
         </div>
       </div>
@@ -108,112 +154,59 @@ export const ProfilePage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container mx-auto px-4">
-        {/* Profile Header */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <div className="flex items-start justify-between mb-6">
-            <div className="flex items-center space-x-4">
-              <img
-                src={`https://api.dicebear.com/7.x/initials/svg?seed=${profile.displayName}`}
-                alt={profile.displayName}
-                className="w-20 h-20 rounded-full"
-              />
-              <div>
-                <h1 className="text-2xl font-bold">{profile.displayName}</h1>
-                <p className="text-gray-600">
-                  Membre depuis {format(new Date(profile.joinedAt), "MMMM yyyy", { locale: fr })}
-                </p>
-              </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                {profile.displayName}
+              </h1>
+              {profile.bio && (
+                <p className="text-gray-600 mb-4">{profile.bio}</p>
+              )}
+              <p className="text-sm text-gray-500">
+                Membre depuis {format(profile.joinedAt, "MMMM yyyy", { locale: fr })}
+              </p>
             </div>
             {user?.uid === id && (
-              <button className="text-gray-600 hover:text-red-600 transition-colors">
-                <Settings size={24} />
+              <button
+                className="flex items-center text-gray-600 hover:text-red-600"
+                onClick={() => window.location.href = '/settings'}
+              >
+                <Settings className="w-5 h-5 mr-1" />
+                Paramètres
               </button>
             )}
           </div>
 
-          {profile.bio && (
-            <p className="text-gray-700 mb-6">{profile.bio}</p>
-          )}
-
-          <div className="flex space-x-8">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{profile.articlesCount}</div>
-              <div className="text-sm text-gray-600">Articles</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{profile.commentsCount}</div>
-              <div className="text-sm text-gray-600">Commentaires</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-gray-200 mb-8">
-          <nav className="flex space-x-8">
+          <div className="flex space-x-4 border-b border-gray-200">
             <button
-              onClick={() => setActiveTab('articles')}
-              className={`py-4 px-1 border-b-2 font-medium ${
+              className={`px-4 py-2 ${
                 activeTab === 'articles'
-                  ? 'border-red-600 text-red-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-b-2 border-red-600 text-red-600'
+                  : 'text-gray-600'
               }`}
+              onClick={() => setActiveTab('articles')}
             >
-              <Edit2 className="inline-block mr-2" size={18} />
-              Articles
+              <span className="flex items-center">
+                <Edit2 className="w-4 h-4 mr-2" />
+                Articles ({articles.length})
+              </span>
             </button>
-            <button
-              onClick={() => setActiveTab('comments')}
-              className={`py-4 px-1 border-b-2 font-medium ${
-                activeTab === 'comments'
-                  ? 'border-red-600 text-red-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <MessageSquare className="inline-block mr-2" size={18} />
-              Commentaires
-            </button>
-            <button
-              onClick={() => setActiveTab('bookmarks')}
-              className={`py-4 px-1 border-b-2 font-medium ${
-                activeTab === 'bookmarks'
-                  ? 'border-red-600 text-red-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Bookmark className="inline-block mr-2" size={18} />
-              Favoris
-            </button>
-          </nav>
+          </div>
         </div>
 
-        {/* Content */}
-        {activeTab === 'articles' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {articles.map(article => (
-              <ArticleCard
-                key={article.id}
-                article={article}
-                onVote={handleVote}
-              />
-            ))}
-          </div>
-        )}
-
-        {activeTab === 'comments' && (
-          <div className="space-y-4">
-            {/* Comments will be loaded here */}
-            <p className="text-center text-gray-600">Fonctionnalité à venir</p>
-          </div>
-        )}
-
-        {activeTab === 'bookmarks' && (
-          <div className="space-y-4">
-            {/* Bookmarks will be loaded here */}
-            <p className="text-center text-gray-600">Fonctionnalité à venir</p>
-          </div>
-        )}
+        <div className="space-y-6">
+          {activeTab === 'articles' && articles.map(article => (
+            <ArticleCard
+              key={article.id}
+              article={article}
+              onVote={handleVote}
+              showAuthor={false}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

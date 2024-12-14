@@ -9,9 +9,10 @@ import type { Article } from '../types';
 interface ArticleCardProps {
   article: Article;
   onVote: (id: string, value: number) => void;
+  showAuthor?: boolean;
 }
 
-export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onVote }) => {
+export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onVote, showAuthor = true }) => {
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
 
   return (
@@ -28,14 +29,16 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, onVote }) => 
         )}
         <div className="p-6">
           <div className="flex items-center space-x-2 text-sm text-gray-600 mb-3">
-            <Link to={`/profile/${article.authorId}`} className="flex items-center space-x-2 hover:text-red-600">
-              <img 
-                src={`https://api.dicebear.com/7.x/initials/svg?seed=${article.authorName}`}
-                alt={article.authorName}
-                className="w-6 h-6 rounded-full"
-              />
-              <span>{article.authorName}</span>
-            </Link>
+            {showAuthor && (
+              <Link to={`/profile/${article.authorId}`} className="flex items-center space-x-2 hover:text-red-600">
+                <img 
+                  src={`https://api.dicebear.com/7.x/initials/svg?seed=${article.authorName}`}
+                  alt={article.authorName}
+                  className="w-6 h-6 rounded-full"
+                />
+                <span>{article.authorName}</span>
+              </Link>
+            )}
             <span>•</span>
             <time>
               {format(new Date(article.createdAt), "d MMMM yyyy", { locale: fr })}

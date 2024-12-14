@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -12,23 +12,23 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
+// Initialiser Firebase
 const app = initializeApp(firebaseConfig);
 
+// Obtenir les services Firebase
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// Initialisation de l'émulateur Firestore si nous sommes en développement
-if (import.meta.env.DEV) {
-  connectFirestoreEmulator(db, 'localhost', 8080);
-}
-
 // Activer la persistance hors ligne
-enableIndexedDbPersistence(db)
-  .catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('La persistance échouée car plusieurs onglets sont ouverts');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Le navigateur ne supporte pas la persistance');
-    }
+if (typeof window !== 'undefined') {
+  import('firebase/firestore').then(({ enableIndexedDbPersistence }) => {
+    enableIndexedDbPersistence(db).catch((err) => {
+      if (err.code === 'failed-precondition') {
+        console.warn('La persistance échouée car plusieurs onglets sont ouverts');
+      } else if (err.code === 'unimplemented') {
+        console.warn('Le navigateur ne supporte pas la persistance');
+      }
+    });
   });
+}

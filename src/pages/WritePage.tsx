@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { db } from '../config/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { AlertCircle, Image as ImageIcon, X } from 'lucide-react';
+import { CLOUDINARY_CONFIG } from '../config/cloudinary';
 
 export const WritePage = () => {
   const [title, setTitle] = useState('');
@@ -18,75 +18,31 @@ export const WritePage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files[0]) {
-      console.log('No file selected');
-      return;
-    }
-
-    if (!user) {
-      setError('Vous devez être connecté pour télécharger des images');
-      return;
-    }
-
-    const file = e.target.files[0];
-    console.log('File selected:', file.name, file.type, file.size);
-
-    if (!file.type.startsWith('image/')) {
-      setError('Le fichier doit être une image');
-      return;
-    }
-
+  const handleImageUpload = async (file: File) => {
     try {
-      setUploading(true);
-      setError(null);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
+      formData.append('folder', `${CLOUDINARY_CONFIG.folder}/articles`);
 
-      // Créer un nom de fichier sécurisé
-      const timestamp = Date.now();
-      const safeFileName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
-      const path = `articles/${user.uid}/${timestamp}_${safeFileName}`;
-      console.log('Upload path:', path);
-
-      // Créer une référence au fichier
-      const storageRef = ref(storage, path);
-      
-      // Upload le fichier
-      console.log('Starting upload...');
-      const snapshot = await uploadBytes(storageRef, file);
-      console.log('Upload completed:', snapshot);
-
-      // Obtenir l'URL de téléchargement
-      console.log('Getting download URL...');
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      console.log('Download URL:', downloadURL);
-
-      // Mettre à jour l'état
-      setImages(prev => [...prev, downloadURL]);
-      setContent(prev => prev + `\n![${file.name}](${downloadURL})\n`);
-
-      // Réinitialiser l'input file
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-
-      console.log('Upload process completed successfully');
-    } catch (err) {
-      console.error('Upload error:', err);
-      
-      // Gérer les erreurs spécifiques
-      if (err instanceof Error) {
-        if (err.message.includes('storage/unauthorized')) {
-          setError('Accès non autorisé. Veuillez vous reconnecter.');
-        } else if (err.message.includes('storage/quota-exceeded')) {
-          setError('Quota de stockage dépassé.');
-        } else {
-          setError(`Erreur lors de l'upload: ${err.message}`);
+      const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${CLOUDINARY_CONFIG.cloudName}/image/upload`,
+        {
+          method: 'POST',
+          body: formData
         }
-      } else {
-        setError('Une erreur est survenue lors du téléchargement');
+      );
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de l\'upload de l\'image');
       }
-    } finally {
-      setUploading(false);
+
+      const data = await response.json();
+      return data.secure_url;
+    } catch (error) {
+      console.error('Erreur lors de l\'upload:', error);
+      setError('Erreur lors de l\'upload de l\'image');
+      throw error;
     }
   };
 
@@ -153,6 +109,46 @@ export const WritePage = () => {
     setContent(prev => prev.replace(`![](${imageUrl})\n`, ''));
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) {
+      console.log('No file selected');
+      return;
+    }
+
+    if (!user) {
+      setError('Vous devez être connecté pour télécharger des images');
+      return;
+    }
+
+    const file = e.target.files[0];
+    console.log('File selected:', file.name, file.type, file.size);
+
+    if (!file.type.startsWith('image/')) {
+      setError('Le fichier doit être une image');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setError(null);
+
+      const imageUrl = await handleImageUpload(file);
+      setImages(prev => [...prev, imageUrl]);
+      setContent(prev => prev + `\n![${file.name}](${imageUrl})\n`);
+
+      // Réinitialiser l'input file
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      console.log('Upload process completed successfully');
+    } catch (err) {
+      console.error('Upload error:', err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="container mx-auto px-4">
@@ -205,7 +201,7 @@ export const WritePage = () => {
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  onChange={handleImageUpload}
+                  onChange={handleFileChange}
                   className="hidden"
                 />
               </div>

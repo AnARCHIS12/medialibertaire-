@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { collection, query, where, orderBy, getDocs, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../config/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';

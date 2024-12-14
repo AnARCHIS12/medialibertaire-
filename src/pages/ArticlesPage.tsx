@@ -13,7 +13,7 @@ import {
   updateDoc,
   increment
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../config/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { Article } from '../types';
 import { ArticleCard } from '../components/ArticleCard';

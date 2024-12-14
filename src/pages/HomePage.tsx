@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Newspaper, Users, MessageSquare, PenSquare } from 'lucide-react';
 import { collection, query, orderBy, limit, getDocs, doc, updateDoc, increment } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../config/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { ArticleCard } from '../components/ArticleCard';
 import { convertFirestoreArticle } from '../utils/firestore';
